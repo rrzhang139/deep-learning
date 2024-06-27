@@ -75,7 +75,7 @@ class Decoder(nn.Module):
 # Training
 
 
-def train(encoder, decoder, input_tensor, target_tensor, optimizer, criterion, max_length, vocab):
+def train(encoder, decoder, input_tensor, target_tensor, optimizer, criterion, vocab, max_length):
     encoder_hidden = encoder.init_hidden()
 
     optimizer.zero_grad()
@@ -96,11 +96,12 @@ def train(encoder, decoder, input_tensor, target_tensor, optimizer, criterion, m
     decoder_hidden = encoder_hidden
 
     for di in range(target_length):
-        decoder_output, decoder_hidden = decoder(decoder_input, decoder_hidden)
+        decoder_output, _ = decoder(decoder_input, decoder_hidden)
         topv, topi = decoder_output.topk(1)
         decoder_input = topi.squeeze().detach()
 
-        loss += criterion(decoder_output, target_tensor[di].unsqueeze(0))
+        loss += criterion(decoder_output,
+                          target_tensor[di])
         if decoder_input.item() == vocab.word2index["<EOS>"]:
             break
 
@@ -113,9 +114,9 @@ def train(encoder, decoder, input_tensor, target_tensor, optimizer, criterion, m
 # Evaluation
 
 
-def evaluate(encoder, decoder, sentence, max_length, vocab):
+def evaluate(encoder, decoder, sentence, vocab, max_length):
     with torch.no_grad():
-        input_tensor = tensor_from_sentence(sentence)
+        input_tensor = tensor_from_sentence(sentence, vocab)
         input_length = input_tensor.size(0)
         encoder_hidden = encoder.init_hidden()
 
@@ -153,6 +154,16 @@ def tensor_from_sentence(sentence, vocab):
     indexes.append(vocab.word2index["<EOS>"])
     return torch.tensor(indexes, dtype=torch.long).view(-1, 1)
 
+
+# def tensor_from_sentence(sentence, vocab):
+#     indexes = [vocab.word2index[word]
+#                if word in vocab.word2index else vocab.word2index["<UNK>"] for word in sentence]
+#     indexes.append(vocab.word2index["<EOS>"])
+#     one_hot_vectors = torch.zeros(
+#         (len(indexes), vocab.n_words), dtype=torch.long)
+#     for i, index in enumerate(indexes):
+#         one_hot_vectors[i][index] = 1
+#     return one_hot_vectors
 # Convert a tensor to a sentence
 
 
@@ -182,7 +193,7 @@ def main():
     # Define the optimizer and loss function
     optimizer = optim.SGD(list(encoder.parameters()) +
                           list(decoder.parameters()), lr=learning_rate)
-    criterion = nn.NLLLoss()
+    criterion = nn.CrossEntropyLoss()
 
     # Convert input and target sentences to tensors
     input_tensor = tensor_from_sentence(input_sentence, vocab)
@@ -191,13 +202,13 @@ def main():
     # Training loop
     for iteration in range(num_iterations):
         loss = train(encoder, decoder, input_tensor, target_tensor,
-                     optimizer, criterion, max_length=len(input_tensor), vocab=vocab)
+                     optimizer, criterion, vocab, max_length=len(input_tensor))
         print(f"Iteration: {iteration+1}, Loss: {loss:.4f}")
 
     # Evaluate the model
     input_sentence = tokenize("the quick brown fox")
     decoded_words = evaluate(
-        encoder, decoder, input_sentence, max_length=10, vocab=vocab)
+        encoder, decoder, input_sentence, vocab, max_length=10)
     output_sentence = ' '.join(decoded_words)
     print(f"Input: {' '.join(input_sentence)}\nOutput: {output_sentence}")
 
